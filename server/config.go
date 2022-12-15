@@ -5,6 +5,9 @@ import (
 	"log"
 	"os"
 	"strings"
+
+	"github.com/songgao/water"
+	"github.com/vishvananda/netlink"
 )
 
 type config struct {
@@ -12,6 +15,7 @@ type config struct {
 	interfaceName string
 	port          string
 	interfaceIP   string
+	iface         *water.Interface
 }
 
 func getenv(key, fallback string) string {
@@ -21,7 +25,7 @@ func getenv(key, fallback string) string {
 	return fallback
 }
 
-func (c config) validate() error {
+func (c *config) validate() error {
 	errs := make([]string, 0)
 	if c.listenAddr == "" {
 		errs = append(errs, "listen address is required")
@@ -32,6 +36,52 @@ func (c config) validate() error {
 
 	if len(errs) > 0 {
 		return errors.New(strings.Join(errs, ", "))
+	}
+	return nil
+}
+
+func (c *config) GetInterface() *water.Interface {
+	return c.iface
+}
+
+func (c *config) bootstrap() error {
+	// setup device and ensure it is ready
+	config := water.Config{
+		DeviceType: water.TAP,
+	}
+	config.Name = c.interfaceName
+
+	iface, err := water.New(config)
+	if err != nil {
+		return err
+	}
+
+	c.iface = iface
+
+	tap, _ := netlink.LinkByName(iface.Name())
+	addr, err := netlink.ParseAddr(c.interfaceIP)
+	if err != nil {
+		return err
+	}
+
+	//get existing addresses
+	addrs, err := netlink.AddrList(tap, netlink.FAMILY_V4)
+	if err != nil {
+		return err
+	}
+
+	if len(addrs) > 0 {
+		//remove existing addresses
+		for _, addr := range addrs {
+			if err := netlink.AddrDel(tap, &addr); err != nil {
+				return err
+			}
+		}
+	}
+
+	//add new address
+	if err := netlink.AddrAdd(tap, addr); err != nil {
+		return err
 	}
 	return nil
 }
@@ -59,6 +109,9 @@ func LoadConfigFromEnv() config {
 
 	if err := conf.validate(); err != nil {
 		log.Fatalf("Invalid configurations: %s", err)
+	}
+	if err := conf.bootstrap(); err != nil {
+		log.Fatalf("Failed to bootstrap configurations: %s", err)
 	}
 
 	return conf

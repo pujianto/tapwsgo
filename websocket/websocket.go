@@ -2,24 +2,24 @@ package websocket
 
 import (
 	"log"
+
+	"github.com/songgao/water"
 )
 
 type webSocketService struct {
 	listenAddr string
 	endpoint   string
 	name       string
+	iface      *water.Interface
 }
 
-func New(listenAddr string, endpoint string, name string) *webSocketService {
+func New(listenAddr string, endpoint string, name string, iface water.Interface) *webSocketService {
 	ws := webSocketService{}
+	ws.iface = &iface
 	ws.name = name
 	ws.listenAddr = listenAddr
 	ws.endpoint = endpoint
 	return &ws
-}
-
-func htons(port int) int {
-	return (port&0xff)<<8 | port>>8
 }
 
 func (w *webSocketService) Start() error {
